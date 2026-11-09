@@ -18,9 +18,15 @@ export interface RegistrationRequest {
 
 const BASE_URL = '/api';
 
-const KNOWN_ERRORS: [RegExp, string][] = [
+export class ApiError extends Error {
+  constructor(message: string, public status?: number, public field?: string) {
+    super(message);
+  }
+}
+
+const KNOWN_ERRORS: [RegExp, string, string?][] = [
   [/fully booked/i, 'Dogodek je že zaseden.'],
-  [/already registered/i, 'S tem e-poštnim naslovom ste na dogodek že prijavljeni.'],
+  [/already registered/i, 'S tem e-poštnim naslovom ste na dogodek že prijavljeni.', 'email'],
   [/already started/i, 'Prijave so zaprte, ker se je dogodek že začel.'],
   [/cannot be later than/i, 'Datum "od" ne sme biti kasnejši od datuma "do".'],
   [/was not found/i, 'Dogodek ne obstaja.'],
@@ -31,27 +37,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${BASE_URL}${path}`, init);
   } catch {
-    throw new Error('Strežnik ni dosegljiv. Poskusite znova kasneje.');
+    throw new ApiError('Strežnik ni dosegljiv. Poskusite znova kasneje.');
   }
   if (!res.ok) {
-    throw new Error(await errorMessage(res));
+    throw await toApiError(res);
   }
   return res.json();
 }
 
-async function errorMessage(res: Response): Promise<string> {
+async function toApiError(res: Response): Promise<ApiError> {
   try {
     const problem = await res.json();
     if (problem.errors) {
-      return 'Preverite vnesene podatke.';
+      return new ApiError('Preverite vnesene podatke.', res.status);
     }
     const known = KNOWN_ERRORS.find(([pattern]) => pattern.test(problem.detail ?? ''));
     if (known) {
-      return known[1];
+      return new ApiError(known[1], res.status, known[2]);
     }
   } catch {
   }
-  return 'Prišlo je do napake. Poskusite znova.';
+  return new ApiError('Prišlo je do napake. Poskusite znova.', res.status);
 }
 
 const startOfDay = (date: string) => new Date(`${date}T00:00:00`).toISOString();

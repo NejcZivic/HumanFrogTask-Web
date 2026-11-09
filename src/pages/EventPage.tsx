@@ -1,5 +1,5 @@
 import { createResource, createSignal, Show, type Component } from 'solid-js';
-import { formatDate, formatTime, getEvent, isPast, registerForEvent } from '../api';
+import { ApiError, formatDate, formatTime, getEvent, isPast, registerForEvent } from '../api';
 import Message from '../components/Message';
 
 const inputClass = 'rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none';
@@ -20,17 +20,15 @@ const EventPage: Component<{ id: number; backHref: string }> = (props) => {
     e.preventDefault();
     const form = e.currentTarget as HTMLFormElement;
     const data = new FormData(form);
-    setSubmitting(true);
     setError('');
+    setEmailError('');
     setSuccess(false);
+    if (!emailRegex.test(String(data.get('email')).trim())) {
+      setEmailError('Neveljaven e-poštni naslov.');
+      return;
+    }
+    setSubmitting(true);
     try {
-      if (!emailRegex.test(String(data.get('email')).trim())) {
-        setEmailError('Neveljaven e-poštni naslov.');
-        throw new Error('Neveljaven e-poštni naslov.');
-      } else {
-        setEmailError('');
-      }
-
       await registerForEvent(props.id, {
         name: String(data.get('name')).trim(),
         surname: String(data.get('surname')).trim(),
@@ -40,7 +38,11 @@ const EventPage: Component<{ id: number; backHref: string }> = (props) => {
       form.reset();
       refetch();
     } catch (err) {
-      setError((err as Error).message);
+      if (err instanceof ApiError && err.field === 'email') {
+        setEmailError(err.message);
+      } else {
+        setError((err as Error).message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -117,6 +119,9 @@ const EventPage: Component<{ id: number; backHref: string }> = (props) => {
                     <Message tone="error">{emailError()}</Message>
                   </Show>
                 </label>
+                <Show when={error()}>
+                  <Message tone="error">{error()}</Message>
+                </Show>
                 <button
                   type="submit"
                   disabled={submitting()}
